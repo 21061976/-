@@ -662,4 +662,34 @@
         // מיון הסיכונים לפי חומרה
         adjustedRisks.sort((a, b) => b.severity - a.severity);
         
+        // הכנת תוכן הדוח
+        const resultHTML = generateTabsContent(projectName, adjustedRisks, filesInfo);
+        
+        // הצגת התוצאות
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = resultHTML;
+        resultDiv.style.display = 'block';
+        
+        // הוספת מאזיני אירועים לאחר יצירת התוכן
+        addEventListeners(adjustedRisks);
+        
+      } catch (error) {
+        console.error('שגיאה בניתוח:', error);
+        alert('אירעה שגיאה בניתוח הסיכונים. נא לנסות שוב.');
+      } finally {
+        // החזרת הכפתור למצב הרגיל
+        document.getElementById('analyze-btn').textContent = 'נתח סיכונים';
+        document.getElementById('analyze-btn').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>, Math.max(1, Math.round(risk.probability * relevanceScore)));
+          risk.impact = Math.min(10, Math.max(1, Math.round(risk.impact * relevanceScore)));
+          risk.severity = risk.probability * risk.impact;
+        });
+        
+        // מיון הסיכונים לפי חומרה
+        adjustedRisks.sort((a, b) => b.severity - a.severity);
+        
         // הכנ
