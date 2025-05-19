@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -355,7 +354,29 @@
         });
       }
       
-      // הכנת מידע מהקבצים לניתוח
+      // הכנת תוכן הדוח
+        const resultHTML = generateTabsContent(projectName, adjustedRisks, filesInfo);
+        
+        // הצגת התוצאות
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = resultHTML;
+        resultDiv.style.display = 'block';
+        
+        // הוספת מאזיני אירועים לאחר יצירת התוכן
+        addEventListeners(adjustedRisks);
+        
+      } catch (error) {
+        console.error('שגיאה בניתוח:', error);
+        alert('אירעה שגיאה בניתוח הסיכונים. נא לנסות שוב.');
+      } finally {
+        // החזרת הכפתור למצב הרגיל
+        document.getElementById('analyze-btn').textContent = 'נתח סיכונים';
+        document.getElementById('analyze-btn').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>ת מידע מהקבצים לניתוח
       async prepareFilesInfo(usage) {
         let result = {
           summary: `קבצים שהועלו: ${this.files.length}`,
@@ -507,7 +528,12 @@
       let csv = "מספר,קטגוריה,תיאור הסיכון,השלכות,הסתברות,נזק צפוי,חומרת הסיכון,אסטרטגיות להתמודדות\n";
       
       risks.forEach(risk => {
-        csv += `${risk.id},"${risk.name}","${risk.description}","${risk.impacts}",${risk.probability},${risk.impact},${risk.severity},"${risk.strategies.join('; ')}"\n`;
+        // החלפת גרשיים כפולים בגרשיים כפולים כפולים למניעת בעיות בקובץ CSV
+        const safeDesc = risk.description.replace(/"/g, '""');
+        const safeImpacts = risk.impacts.replace(/"/g, '""');
+        const safeStrategies = risk.strategies.join('; ').replace(/"/g, '""');
+        
+        csv += `${risk.id},"${risk.name}","${safeDesc}","${safeImpacts}",${risk.probability},${risk.impact},${risk.severity},"${safeStrategies}"\n`;
       });
       
       return csv;
@@ -521,6 +547,59 @@
       a.download = fileName;
       a.click();
       URL.revokeObjectURL(a.href);
+    }
+    
+    // פונקציה להוספת מאזיני אירועים לאחר יצירת התוכן
+    function addEventListeners(risks) {
+      // הוספת מאזיני אירועים ללשוניות
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+          // הסרת המחלקה 'active' מכל הלשוניות
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          // הוספת המחלקה 'active' ללשונית הנוכחית
+          this.classList.add('active');
+          
+          // הסתרת כל התוכן של הלשוניות
+          document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+            content.style.display = 'none';
+          });
+          
+          // הצגת התוכן של הלשונית שנבחרה
+          const tabId = this.getAttribute('data-tab') + '-tab';
+          const tabContent = document.getElementById(tabId);
+          if (tabContent) {
+            tabContent.classList.add('active');
+            tabContent.style.display = 'block';
+          }
+        });
+      });
+      
+      // הוספת מאזיני אירועים לכפתורי הייצוא
+      const exportCsvBtn = document.getElementById('export-csv');
+      if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', function() {
+          const projectName = document.getElementById('project-name').value || 'project';
+          const csvContent = generateCSV(risks);
+          downloadFile(csvContent, projectName + '-risk-analysis.csv', 'text/csv;charset=utf-8');
+        });
+      }
+      
+      const exportJsonBtn = document.getElementById('export-json');
+      if (exportJsonBtn) {
+        exportJsonBtn.addEventListener('click', function() {
+          const projectName = document.getElementById('project-name').value || 'project';
+          const jsonContent = JSON.stringify(risks, null, 2);
+          downloadFile(jsonContent, projectName + '-risk-analysis.json', 'application/json');
+        });
+      }
+      
+      const printBtn = document.getElementById('print');
+      if (printBtn) {
+        printBtn.addEventListener('click', function() {
+          window.print();
+        });
+      }
     }
     
     // אירוע ללחיצה על כפתור ניתוח
@@ -547,10 +626,10 @@
         const filesInfo = await fileManager.prepareFilesInfo(fileUsage);
         
         // התאמת הסיכונים לפי מידע שהוזן
-        const adjustedRisks = [...predefinedRisks];
+        const adjustedRisks = JSON.parse(JSON.stringify(predefinedRisks)); // עותק עמוק של מערך הסיכונים
         
         // לוגיקה פשוטה להתאמת הסיכונים לפי מילות מפתח
-        const fullText = [projectDesc, curriculum, lte, filesInfo.textContent].join(' ');
+        const fullText = [projectDesc, curriculum, lte, filesInfo.textContent].join(' ').toLowerCase();
         
         const keywords = {
           "תוכן": ["תוכן", "תכנים", "מידע", "ידע", "בינה מלאכותית"],
@@ -562,13 +641,15 @@
         
         // חישוב התאמות פשוטות לסיכונים
         adjustedRisks.forEach(risk => {
-          const categoryKeywords = keywords[risk.name.split(' ')[0]] || [];
+          const categoryName = risk.name.split(' ')[0]; // קטגוריה לפי המילה הראשונה
+          const categoryKeywords = keywords[categoryName] || [];
           let relevanceScore = 1.0; // ערך התחלתי ניטרלי
           
           // בדיקת מילות מפתח בטקסט המלא
           categoryKeywords.forEach(keyword => {
-            if (fullText.includes(keyword)) {
-              relevanceScore += 0.1; // עלייה קטנה בציון הרלוונטיות
+            const regex = new RegExp(keyword, 'i'); // חיפוש תואם לא רגיש לאותיות גדולות/קטנות
+            if (regex.test(fullText)) {
+              relevanceScore += 0.2; // עלייה בציון הרלוונטיות
             }
           });
           
@@ -581,54 +662,4 @@
         // מיון הסיכונים לפי חומרה
         adjustedRisks.sort((a, b) => b.severity - a.severity);
         
-        // הכנת תוכן הדוח
-        const resultHTML = generateTabsContent(projectName, adjustedRisks, filesInfo);
-        
-        // הצגת התוצאות
-        const resultDiv = document.getElementById('result');
-        resultDiv.innerHTML = resultHTML;
-        resultDiv.style.display = 'block';
-        
-        // הוספת מאזיני אירועים ללשוניות
-        document.querySelectorAll('.tab').forEach(tab => {
-          tab.addEventListener('click', function() {
-            // הסרת המחלקה 'active' מכל הלשוניות
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            // הוספת המחלקה 'active' ללשונית הנוכחית
-            this.classList.add('active');
-            
-            // הסתרת כל התוכן של הלשוניות
-            document.querySelectorAll('.tab-content').forEach(content => content.style.display = 'none');
-            
-            // הצגת התוכן של הלשונית שנבחרה
-            const tabId = this.getAttribute('data-tab') + '-tab';
-            document.getElementById(tabId).style.display = 'block';
-          });
-        });
-        
-        // הוספת מאזיני אירועים לכפתורי הייצוא
-        document.getElementById('export-csv').addEventListener('click', function() {
-          const csvContent = generateCSV(adjustedRisks);
-          downloadFile(csvContent, projectName + '-risk-analysis.csv', 'text/csv;charset=utf-8');
-        });
-        
-        document.getElementById('export-json').addEventListener('click', function() {
-          const jsonContent = JSON.stringify(adjustedRisks, null, 2);
-          downloadFile(jsonContent, projectName + '-risk-analysis.json', 'application/json');
-        });
-        
-        document.getElementById('print').addEventListener('click', function() {
-          window.print();
-        });
-        
-      } catch (error) {
-        console.error('שגיאה בניתוח:', error);
-        alert('אירעה שגיאה בניתוח הסיכונים. נא לנסות שוב.');
-      } finally {
-        // החזרת הכפתור למצב הרגיל
-        document.getElementById('analyze-btn').textContent = 'נתח סיכונים';
-        document.getElementById('analyze-btn').disabled = false;
-      }
-    });
-  </script>
-
+        // הכנ
